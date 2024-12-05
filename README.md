@@ -1,6 +1,6 @@
 # Challenging Dataset and Multi-modal Gated Mixture of Experts Model for Remote Sensing Copy-Move Forgery Understanding
 
-This is the initial version of the Real-RSCM dataset and CM-MMoE Framework (CMFAF). 
+This is the initial version of the Real-RSCM dataset and CM-MMoE Framework. 
 
 ### Installation
 
@@ -29,9 +29,7 @@ pip install -r requirements.txt
 
 ### Download Datasets
 
-- **Datasets V1.0 is released at Baidu Drive** (2024.9.5)
-
-- **Datasets V2.0 is released at Baidu Drive** (2024.10.11)
+- **Datasets V1.0 is released at Baidu Drive** (2024.12.15)
 
   
 
