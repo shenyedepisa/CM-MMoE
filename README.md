@@ -29,10 +29,8 @@ pip install -r requirements.txt
 
 ### Download Datasets
 
-- [**Datasets V1.0 is released at Baidu Drive** (2024.12.25)](https://pan.baidu.com/s/1itum7p1b5_4vKFCaskPgyQ?pwd=real)
-
+- [**Datasets V1.0 is released at Baidu Cloud**](https://pan.baidu.com/s/1itum7p1b5_4vKFCaskPgyQ?pwd=real) and [**Google Drive**](https://drive.google.com/drive/folders/1uSCa8U0jGs2QHPB34zJ6jfslCvE-sCLq?usp=drive_link) (2024.12.25)
 - Dataset Directory: ` datasets/`
-
 - Dataset Subdirectory: `datasets/JsonFiles/`,  `datasets/image/`, `datasets/source/`, `datasets/target/`, `datasets/background/`, `datasets/segmentation/`
 
 
