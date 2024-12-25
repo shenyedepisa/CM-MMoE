@@ -242,7 +242,7 @@ def train(_config, train_dataset, val_dataset, test_dataset, device, question_vo
             rmse = torch.sqrt(mse)
             acc_loss = criterion(pred, answer)
 
-            loss = 0.5 * rmse + 0.5 * acc_loss + moe_loss
+            loss = 0.3 * rmse + 0.7 * acc_loss + moe_loss
             # The ground truth of mask has not been normalized. (Which is intuitively weird)
             # This may be modified in future versions, but currently this method works better than directly normalizing the mask
             if not _config['normalize']:
