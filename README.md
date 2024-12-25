@@ -29,13 +29,11 @@ pip install -r requirements.txt
 
 ### Download Datasets
 
-- **Datasets V1.0 is released at Baidu Drive** (2024.12.15)
-
-  
+- [**Datasets V1.0 is released at Baidu Drive** (2024.12.25)](https://pan.baidu.com/s/1itum7p1b5_4vKFCaskPgyQ?pwd=real)
 
 - Dataset Directory: ` datasets/`
 
-- Dataset Subdirectory: `datasets/JsonFiles/`, `datasets/JsonFilesBalanced/`, `datasets/image/`, `datasets/source/`, `datasets/target/`, `datasets/background/`
+- Dataset Subdirectory: `datasets/JsonFiles/`,  `datasets/image/`, `datasets/source/`, `datasets/target/`, `datasets/background/`, `datasets/segmentation/`
 
 
 ### Download pre-trained weights
@@ -58,16 +56,15 @@ python main.py
 
 ### Data Examples
 
-![数据集](https://github.com/shenyedepisa/RSCMQA/blob/main/img/datasets.png)
+![](https://meee.com.tw/gxerqE2)
 
 ### Citation
 
 ```
-@unpublished{global2025aaai,
-  title = {Global-TQA: Global Remote Sensing Image Tampering Question and Answering},
-  url={https://anonymous.4open.science/r/TQA},
-  month = {8},
-  year = {2024}
+@unpublished{CM_MMoE_2025_ICME,
+  title = {Challenging Dataset and Multi-modal Gated Mixture of Experts Model for Remote Sensing Copy-Move Forgery Understanding},
+  month = {6},
+  year = {2025}
 }
 ```
 

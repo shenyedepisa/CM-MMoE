@@ -13,39 +13,54 @@ import copy
 
 def test_model(_config, model, test_loader, test_length, device, logger, wandb_epoch=None, epoch=0):
     v1 = time.time()
+    use_wandb = _config["use_wandb"]
+    use_moe = _config["MoE"]
     classes = _config["question_classes"]
+    num_of_experts = _config["EXPERTS"]
     criterion = torch.nn.CrossEntropyLoss()
     logger.info(f"Testing:")
     with torch.no_grad():
         model.eval()
-        accLoss, maeLoss, rmseLoss = 0, 0, 0
+        accLoss, maeLoss, rmseLoss, moeLoss, expert_count = 0, 0, 0, 0, np.zeros(num_of_experts)
 
         countQuestionType = {str(i): 0 for i in range(1, classes + 1)}
         rightAnswerByQuestionType = {str(i): 0 for i in range(1, classes + 1)}
 
         for i, data in tqdm(
-            enumerate(test_loader, 0),
-            total=len(test_loader),
-            ncols=100,
-            mininterval=1,
+                enumerate(test_loader, 0),
+                total=len(test_loader),
+                ncols=100,
+                mininterval=1,
         ):
             question, answer, image, type_str, mask, image_original = data
-            pred, pred_mask = model(
+            if _config['earthVQA'] or _config['sga']:
+                mask = mask[:, -1, :, :].unsqueeze(1)
+            pred, pred_mask, prob, moe_loss = model(
                 image.to(device), question.to(device), mask.to(device)
             )
+
             answer = answer.to(device)
             mae = F.l1_loss(mask.to(device), pred_mask)
             mse = F.mse_loss(mask.to(device), pred_mask)
             rmse = torch.sqrt(mse)
+            if prob is not None:
+                indices = torch.argmax(prob, dim=-1).cpu()
+                counts = torch.bincount(indices, minlength=num_of_experts)
+                expert_stats = counts.numpy()
+                expert_count = expert_count + expert_stats
+
             # The ground truth of mask has not been normalized. (Which is intuitively weird)
             # This may be modified in future versions, but currently this method works better than directly normalizing the mask
             if not _config['normalize']:
-                mae = mae / 255
                 rmse = rmse / 255
+
             acc_loss = criterion(pred, answer)
+
             accLoss += acc_loss.cpu().item() * image.shape[0]
             maeLoss += mae.cpu().item() * image.shape[0]
             rmseLoss += rmse.cpu().item() * image.shape[0]
+            if use_moe:
+                moeLoss += moe_loss.cpu().item() * image.shape[0]
             answer = answer.cpu().numpy()
             pred = np.argmax(pred.cpu().detach().numpy(), axis=1)
 
@@ -57,10 +72,12 @@ def test_model(_config, model, test_loader, test_length, device, logger, wandb_e
         testAccLoss = accLoss / test_length
         testMaeLoss = maeLoss / test_length
         testRmseLoss = rmseLoss / test_length
+        testMoeLoss = moeLoss / test_length
         testLoss = testAccLoss + testRmseLoss + testMaeLoss
         logger.info(
             f"Epoch {epoch} , test loss: {testLoss:.5f}, acc loss : {testAccLoss:.5f}, "
             f"mae loss: {testMaeLoss:.5f}, rmse loss: {testRmseLoss:.5f}"
+            f"Expert count: {expert_count}, MoE loss : {testMoeLoss:.5f}"
         )
         numQuestions = 0
         numRightQuestions = 0
@@ -94,16 +111,15 @@ def test_model(_config, model, test_loader, test_length, device, logger, wandb_e
         acc = numRightQuestions * 1.0 / numQuestions
         AA = 0
         for key in subclassAcc.keys():
-            if wandb_epoch:
-                wandb_epoch.log({"test " + key + " acc": subclassAcc[key][1]}, step=epoch)
+            if use_wandb:
+                if wandb_epoch:
+                    wandb_epoch.log({"test " + key + " acc": subclassAcc[key][1]}, step=epoch)
             AA += subclassAcc[key][1]
-        if _config['balance']:
-            AA = AA / (len(subclassAcc) - 2)
-        else:
-            AA = AA / len(subclassAcc)
+        AA = AA / len(subclassAcc)
+
         v2 = time.time()
         logger.info(f"overall acc: {acc:.5f}\taverage acc: {AA:.5f}")
-        if wandb_epoch:
+        if wandb_epoch and use_wandb:
             wandb_epoch.log(
                 {
                     "test overall acc": acc,
@@ -112,6 +128,7 @@ def test_model(_config, model, test_loader, test_length, device, logger, wandb_e
                     "test acc loss": testAccLoss,
                     "test mae loss": testMaeLoss,
                     "test rmse loss": testRmseLoss,
+                    "test moe loss": testMoeLoss,
                     "test time cost": v2 - v1,
                 },
                 step=epoch,
@@ -135,7 +152,7 @@ def main(_config):
     if not os.path.exists(saveDir):
         os.mkdir(saveDir)
     log_file_name = (
-        saveDir + "Test-" + time.strftime("%Y%m%d-%H%M%S", time.localtime()) + ".log"
+            saveDir + "Test-" + time.strftime("%Y%m%d-%H%M%S", time.localtime()) + ".log"
     )
     logger = Logger(log_file_name)
     source_img_size = _config["source_image_size"]
@@ -167,18 +184,17 @@ def main(_config):
         transform=data_transforms,
     )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    weightsName = "weight_path"
+    weightsName = "lastValModel.pth"
     model = CDModel(
         _config,
-        seq_Encoder.getVocab(question=True),
-        seq_Encoder.getVocab(question=False),
+        seq_Encoder.getVocab(),
         input_size=image_size,
         textHead=textHead,
         imageHead=imageHead,
         trainText=trainText,
         trainImg=trainImg,
     )
-    state_dict = torch.load(weightsName,map_location=device)
+    state_dict = torch.load(weightsName, map_location=device)
     model.load_state_dict(state_dict)
     model.to(device)
     test_length = len(test_dataset)
@@ -190,4 +206,4 @@ def main(_config):
         persistent_workers=persistent_workers,
         pin_memory=pin_memory,
     )
-    test_model(_config, model, test_loader,test_length, device, logger)
+    test_model(_config, model, test_loader, test_length, device, logger)

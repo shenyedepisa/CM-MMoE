@@ -6,42 +6,24 @@ import torch.nn.functional as F
 class SelfAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout):
         super().__init__()
-        self.query = nn.Linear(embed_dim, embed_dim)
-        self.key = nn.Linear(embed_dim, embed_dim)
-        self.value = nn.Linear(embed_dim, embed_dim)
-        self.dropout = torch.nn.Dropout(dropout)
+        self.multihead_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
 
     def forward(self, x):
-        q = self.query(x)
-        k = self.key(x)
-        v = self.value(x)
-
-        scores = torch.matmul(k.transpose(1, 2), q)
-        scores_1 = scores.sum(dim=-1)
-        scores_2 = scores_1 / torch.sqrt(torch.tensor(q.size(-1), dtype=torch.float32))
-        att_mask = torch.mul(v, scores_2)
-        return att_mask
+        x = x.transpose(0, 1)  # nn.MultiheadAttention expects inputs in the shape (seq_len, batch, embed_dim)
+        attn_output, _ = self.multihead_attn(x, x, x)
+        return attn_output.transpose(0, 1)
 
 
 class CrossAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout):
         super().__init__()
-        self.query = nn.Linear(embed_dim, embed_dim)
-        self.key = nn.Linear(embed_dim, embed_dim)
-        self.value = nn.Linear(embed_dim, embed_dim)
-        self.dropout = torch.nn.Dropout(dropout)
-
+        self.multihead_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
 
     def forward(self, x, y):
-        q = self.query(x)
-        k = self.key(y)
-        v = self.value(y)
-
-        scores = torch.matmul(k.transpose(1, 2), q)
-        scores_1 = scores.sum(dim=-1)
-        scores_2 = scores_1 / torch.sqrt(torch.sqrt(torch.tensor(q.size(-1), dtype=torch.float32)))
-        att_mask = torch.mul(v, scores_2.unsqueeze(1))
-        return att_mask
+        x = x.transpose(0, 1)
+        y = y.transpose(0, 1)
+        attn_output, _ = self.multihead_attn(x, y, y)
+        return attn_output.transpose(0, 1)
 
 
 class MLP(nn.Module):
@@ -66,7 +48,7 @@ class MTA(nn.Module):
         self.embed_dim = self.config['embed_size']
         self.num_heads = self.config['heads']
         self.input_dim = self.config['mlp_input']
-        self.hidden_dim = self.config['mlp_input'] * self.config['mlp_ratio']
+        self.hidden_dim = self.config['mlp_input']*self.config['mlp_ratio']
         self.output_dim = self.config['mlp_output']
         self.dropout = self.config['attn_dropout']
         self.selfAttention = SelfAttention(self.embed_dim, self.num_heads, self.dropout)
@@ -79,3 +61,4 @@ class MTA(nn.Module):
         output = self.MLP(output)
 
         return output
+

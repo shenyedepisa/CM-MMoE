@@ -1,46 +1,77 @@
 from sacred import Experiment
 import os
 
-ex = Experiment("RSCD_1", save_git_info=False)
+ex = Experiment("CM-MMoE", save_git_info=False)
 
 
 @ex.config
 def config():
+    # save
+    use_wandb = False
+    subDir = "MoE_6_4"
+
     # Wandb Config
-    wandbName = "formal_balance"
-    wandbKey = "116c9acc73067dd77655e21532d04392aff2174a"
-    project = "Global_TQA"
+    # https://docs.wandb.ai/quickstart/
+    wandbName = subDir
+    wandbKey = ""
+    project = "CM-MMoE"
     job_type = "train"
 
-    balance = True
-    normalize = False
-    answer_number = 53
-    if balance:
-        answer_number = 53
+    MoE = True
+    answer_number = 51
+    question_classes = 14
+    # if MoE:
+    EXPERTS = 6
+    TOP = 4
 
+    sga = False
+    BLIP = False
+    Co_att = False
+    sga1 = False
+    mac = False
+    mcan = False
+    dvqa = False
+    earthVQA = False
+    san = False
+    mqvqa = False
+    rsivqa = False
+    eth = False
+
+    normalize = False
     opts = True
-    num_epochs = 20
-    thread_epoch = 10
     one_step = True
-    if not one_step:
-        thread_epoch = 10
-    question_classes = 15
-    learning_rate = 5e-5
-    saveDir = "./outputs/formal_balance/"
-    new_data_path = "datasets/"
-    source_image_size = 224
+    num_epochs = 30
+    thread_epoch = 20
+
+    learning_rate = 5e-5  # 5e-5
+
+    saveDir = "./outputs/"
+    saveDir = os.path.join(saveDir, subDir + '/')
+    # new_data_path = "datasets/CM_dataset/"
+    new_data_path = './datasets/CM_dataset/'
+    source_image_size = 512
+
     image_resize = 224
+
     FUSION_IN = 768
     FUSION_HIDDEN = 512
     DROPOUT = 0.3
+
+    add_mask = False
+    mask_only = False
+    learnable_mask = False
+    img_only = False
+    if img_only or eth or rsivqa or mqvqa or san or dvqa or mac or mcan or img_only:
+        opts = False
+        one_step = True
+        add_mask = False
+        mask_only = False
+        learnable_mask = False
+
     resample = False
     pin_memory = True
     persistent_workers = True
     num_workers = 4
-    learnable_mask = True
-    img_only = False
-    mask_only = False
-    add_mask = True
 
     real_batch_size = 32
     batch_size = 32  # batch_size * steps == real_batch_size
@@ -59,30 +90,29 @@ def config():
         end_learning_rate = 1e-6
 
     json_path = os.path.join(new_data_path, 'JsonFiles')
-    if balance:
-        json_path = os.path.join(new_data_path, 'JsonFilesBalanced')
     DataConfig = {
         "images_path": os.path.join(new_data_path, "image"),
         "sourceMask_path": os.path.join(new_data_path, "source"),
         "targetMask_path": os.path.join(new_data_path, "target"),
         "backgroundMask_path": os.path.join(new_data_path, "background"),
+        "seg_path": os.path.join(new_data_path, "segmentation"),
         "answersJson": os.path.join(json_path, "Answers.json"),
         "allQuestionsJSON": os.path.join(json_path, "All_Questions.json"),
         "train": {
-            "imagesJSON": os.path.join(json_path, "All_images.json"),
+            "imagesJSON": os.path.join(json_path, "All_Images.json"),
             "questionsJSON": os.path.join(json_path, "Train_Questions.json"),
         },
         "val": {
-            "imagesJSON": os.path.join(json_path, "All_images.json"),
+            "imagesJSON": os.path.join(json_path, "All_Images.json"),
             "questionsJSON": os.path.join(json_path, "Val_Questions.json"),
         },
         "test": {
-            "imagesJSON": os.path.join(json_path, "All_images.json"),
+            "imagesJSON": os.path.join(json_path, "All_Images.json"),
             "questionsJSON": os.path.join(json_path, "Test_Questions.json"),
         },
     }
     MAX_ANSWERS = 100
-    LEN_QUESTION = 40
+    LEN_QUESTION = 30
     clipList = [
         "clip",
         "rsicd",
@@ -101,20 +131,23 @@ def config():
     imageHead = "clip_b_32_224"
     if imageHead == "clip_b_32_224":
         imageModelPath = "models/clipModels/openai_clip_b_32"
-        imageSize = 224
         VISUAL_OUT = 768
-    elif imageHead == "siglip-512":
+        imageSize = 224
+    elif imageHead == "siglip_512":
         imageModelPath = "models/clipModels/siglip_512"
         imageSize = 512
-
+    else:
+        imageSize = 256
     textHead = "clip_b_32_224"
     if textHead == "clip_b_32_224":
         textModelPath = "models/clipModels/openai_clip_b_32"
         QUESTION_OUT = 512
-    elif textHead == "siglip-512":
+    elif textHead == "siglip_512":
         textModelPath = "models/clipModels/siglip_512"
         imageSize = 512
-
+    elif textHead == "skipthoughts":
+        textModelPath = "models/textModels/skip-thoughts"
+        QUESTION_OUT = 2400
     attnConfig = {
         "embed_size": FUSION_IN,
         "heads": 6,
@@ -123,3 +156,21 @@ def config():
         "mlp_output": 768,
         "attn_dropout": 0.1,
     }
+
+    MAC_cfg = {
+        "TFLAG": True,
+        "LEARNING_RATE": 0.0001,
+        "BATCH_SIZE": 64,
+        "MAX_EPOCHS": 25,
+        "SNAPSHOT_INTERVAL": 5,
+        "WEIGHT_INIT": "xavier_uniform",
+        "CLIP_GRADS": True,
+        "CLIP": 8,
+        "MAX_STEPS": 4,
+        "EALRY_STOPPING": True,
+        "PATIENCE": 5,
+        "VAR_DROPOUT": False,
+        "DATA_DIR": '',
+        "NUM_ANS": answer_number,
+    }
+

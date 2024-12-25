@@ -12,17 +12,21 @@ import torch.nn.functional as F
 from models import maskModel, CDModel
 
 
-def train(_config, train_dataset, val_dataset, test_dataset, device):
-    wandb.login(key=_config["wandbKey"])
-    wandb_epoch = None
-    wandb_step = wandb.init(
-        config=_config,
-        project=_config["project"] + "_steps",
-        name=_config["wandbName"],
-        job_type=_config["job_type"],
-        reinit=True,
-    )
+def train(_config, train_dataset, val_dataset, test_dataset, device, question_vocab):
+    use_wandb = _config['use_wandb']
+    wandb_step, wandb_epoch = None, None
+    if use_wandb:
+        wandb.login(key=_config["wandbKey"])
+        wandb_epoch = None
+        wandb_step = wandb.init(
+            config=_config,
+            project=_config["project"] + "_steps",
+            name=_config["wandbName"],
+            job_type=_config["job_type"],
+            reinit=True,
+        )
     start = time.time()
+    use_moe = _config['MoE']
     textHead = _config["textHead"]
     imageHead = _config["imageHead"]
     trainText = _config["trainText"]
@@ -31,6 +35,7 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
     batch_size = _config["batch_size"]
     oneStep = _config["one_step"]
     opts = _config["opts"]
+    img_only = _config['img_only']
     num_epochs = _config["num_epochs"]
     learning_rate = _config["learning_rate"]
     saveDir = _config["saveDir"]
@@ -40,6 +45,8 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
     pin_memory = _config["pin_memory"]
     persistent_workers = _config["persistent_workers"]
     classes = _config["question_classes"]
+    num_of_experts = _config["EXPERTS"]
+    step_moe_loss = 0
     if not os.path.isdir(saveDir):
         os.makedirs(saveDir)
     log_file_name = (
@@ -75,71 +82,96 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
     )
 
     optimizer_mask = None
-    if oneStep:
+    if img_only:
         model = CDModel(
             _config,
+            question_vocab.getVocab(),
             input_size=image_size,
             textHead=textHead,
             imageHead=imageHead,
             trainText=trainText,
             trainImg=trainImg,
         )
-        if opts:
-            maskNet_params = [p for p in model.maskNet.parameters() if p.requires_grad]
-            maskNet_ids = {id(p) for p in model.maskNet.parameters()}
-            other_params = [
-                p
-                for p in model.parameters()
-                if id(p) not in maskNet_ids
-                if p.requires_grad
-            ]
-            optimizer_mask = torch.optim.Adam(maskNet_params, lr=1e-3)
-
-            optimizer = torch.optim.Adam(
-                other_params,
-                lr=learning_rate,
-                weight_decay=_config["weight_decay"],
-            )
-        else:
-            optimizer = torch.optim.Adam(
-                filter(lambda p: p.requires_grad, model.parameters()),
-                lr=learning_rate,
-                weight_decay=_config["weight_decay"],
-            )
-            if _config["opt"] == "SGD":
-                optimizer = torch.optim.SGD(
-                    filter(lambda p: p.requires_grad, model.parameters()),
-                    lr=learning_rate,
-                    weight_decay=_config["weight_decay"],
-                    momentum=0.9,
-                )
-    else:
-        mask_model = maskModel(_config).to(device)
-        train_mask_model(
-            _config,
-            mask_model,
-            train_loader,
-            len(train_dataset),
-            val_loader,
-            len(val_dataset),
-            device,
-            logger,
-        )
-        model = CDModel(
-            _config,
-            input_size=image_size,
-            textHead=textHead,
-            imageHead=imageHead,
-            trainText=trainText,
-            trainImg=trainImg,
-        )
-        for param in model.maskNet.parameters():
-            param.requires_grad = False
         optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, model.parameters()),
             lr=learning_rate,
             weight_decay=_config["weight_decay"],
         )
+        if _config["opt"] == "SGD":
+            optimizer = torch.optim.SGD(
+                filter(lambda p: p.requires_grad, model.parameters()),
+                lr=learning_rate,
+                weight_decay=_config["weight_decay"],
+                momentum=0.9,
+            )
+    else:
+        if oneStep:
+            model = CDModel(
+                _config,
+                question_vocab.getVocab(),
+                input_size=image_size,
+                textHead=textHead,
+                imageHead=imageHead,
+                trainText=trainText,
+                trainImg=trainImg,
+            )
+            if opts:
+                maskNet_params = [p for p in model.maskNet.parameters() if p.requires_grad]
+                maskNet_ids = {id(p) for p in model.maskNet.parameters()}
+                other_params = [
+                    p
+                    for p in model.parameters()
+                    if id(p) not in maskNet_ids
+                    if p.requires_grad
+                ]
+                optimizer_mask = torch.optim.Adam(maskNet_params, lr=1e-3)
+
+                optimizer = torch.optim.Adam(
+                    other_params,
+                    lr=learning_rate,
+                    weight_decay=_config["weight_decay"],
+                )
+            else:
+                optimizer = torch.optim.Adam(
+                    filter(lambda p: p.requires_grad, model.parameters()),
+                    lr=learning_rate,
+                    weight_decay=_config["weight_decay"],
+                )
+                if _config["opt"] == "SGD":
+                    optimizer = torch.optim.SGD(
+                        filter(lambda p: p.requires_grad, model.parameters()),
+                        lr=learning_rate,
+                        weight_decay=_config["weight_decay"],
+                        momentum=0.9,
+                    )
+        else:
+            mask_model = maskModel(_config).to(device)
+            train_mask_model(
+                _config,
+                mask_model,
+                train_loader,
+                len(train_dataset),
+                val_loader,
+                len(val_dataset),
+                device,
+                logger,
+            )
+            model = CDModel(
+                _config,
+                question_vocab.getVocab(),
+                input_size=image_size,
+                textHead=textHead,
+                imageHead=imageHead,
+                trainText=trainText,
+                trainImg=trainImg,
+            )
+            for param in model.maskNet.parameters():
+                param.requires_grad = False
+            optimizer = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, model.parameters()),
+                lr=learning_rate,
+                weight_decay=_config["weight_decay"],
+            )
 
     scheduler = None
     mask_scheduler = None
@@ -168,12 +200,14 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
         trainAccLoss,
         trainMaeLoss,
         trainRmseLoss,
+        trainMoeLoss,
         valLoss,
         valAccLoss,
         valMaeLoss,
         valRmseLoss,
+        valMoeLoss,
         acc,
-    ) = ([], [], [], [], [], [], [], [], [])
+    ) = ([], [], [], [], [], [], [], [], [], [], [])
 
     accPerQuestionType = {str(i): [] for i in range(1, classes + 1)}
     logger.info(
@@ -185,7 +219,7 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
     for epoch in range(num_epochs):
         # train
         model.train()
-        accLoss, maeLoss, rmseLoss = 0, 0, 0
+        accLoss, maeLoss, rmseLoss, moeLoss, expert_count = 0, 0, 0, 0, np.zeros(num_of_experts)
         logger.info(f"Epoch {epoch}")
         t1 = time.time()
         if oneStep and epoch >= _config["thread_epoch"] and not called:
@@ -199,31 +233,39 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
                 mininterval=1,
         ):
             question, answer, image, mask = data
-            pred, pred_mask = model(
-                image.to(device), question.to(device), mask.to(device)
+            pred, pred_mask, prob, moe_loss = model(
+                image.to(device), question.to(device), mask.to(device), epoch=epoch
             )
             answer = answer.to(device)
             mae = F.l1_loss(mask.to(device), pred_mask)
             mse = F.mse_loss(mask.to(device), pred_mask)
             rmse = torch.sqrt(mse)
             acc_loss = criterion(pred, answer)
-            loss = 0 * mae + 0.3 * rmse + 0.7 * acc_loss
+
+            loss = 0.5 * rmse + 0.5 * acc_loss + moe_loss
             # The ground truth of mask has not been normalized. (Which is intuitively weird)
             # This may be modified in future versions, but currently this method works better than directly normalizing the mask
             if not _config['normalize']:
-                mae = mae/255
-                rmse = rmse/255
+                rmse = rmse / 255
             step_acc = acc_loss.cpu().item()
             step_mae = mae.cpu().item()
             step_rmse = rmse.cpu().item()
-
-            if epoch == 0:
+            if use_moe:
+                step_moe_loss = moe_loss.cpu().item()
+            if prob is not None:
+                # expert_stats = torch.argmax(prob, dim=-1).cpu().unique(return_counts=True)[1].numpy()
+                indices = torch.argmax(prob, dim=-1).cpu()
+                counts = torch.bincount(indices, minlength=num_of_experts)
+                expert_stats = counts.numpy()
+                expert_count = expert_count + expert_stats
+            if epoch == 0 and use_wandb:
                 wandb_step.log(
                     {
                         "step loss": step_rmse + step_mae + step_acc,
                         "step acc loss": step_acc,
                         "step mae loss": step_mae,
                         "step rmse loss": step_rmse,
+                        "moe balance loss": step_moe_loss
                     },
                     step=steps,
                 )
@@ -231,6 +273,7 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
             accLoss += step_acc * image.shape[0]
             maeLoss += step_mae * image.shape[0]
             rmseLoss += step_rmse * image.shape[0]
+            moeLoss += step_moe_loss * image.shape[0]
             # --------------------- L1 ---------------------------
             if _config["L1Reg"]:
                 L1_reg = 0
@@ -251,18 +294,21 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
         trainAccLoss.append(accLoss / len(train_dataset))
         trainMaeLoss.append(maeLoss / len(train_dataset))
         trainRmseLoss.append(rmseLoss / len(train_dataset))
+        trainMoeLoss.append(moeLoss / len(train_dataset))
         trainLoss.append(
-            trainAccLoss[epoch] + trainRmseLoss[epoch] + trainMaeLoss[epoch]
+            trainAccLoss[epoch] + trainRmseLoss[epoch] + trainMaeLoss[epoch] + trainMoeLoss[epoch]
         )
         t2 = time.time()
         lr = optimizer.param_groups[0]["lr"]
         logger.info(
             f"Training: epoch {epoch}, train loss: {trainLoss[epoch]:.5f}, acc loss : {trainAccLoss[epoch]:.5f}, "
-            f"mae loss: {trainMaeLoss[epoch]:.5f}, rmse loss: {trainRmseLoss[epoch]:.5f},lr: {lr}"
+            f"mae loss: {trainMaeLoss[epoch]:.5f}, rmse loss: {trainRmseLoss[epoch]:.5f},lr: {lr}\n"
+            f"Expert count: {expert_count}, MoE loss : {trainMoeLoss[epoch]:.5f}"
         )
-        wandb_step.finish()
+        if use_wandb:
+            wandb_step.finish()
 
-        if epoch == 0:
+        if epoch == 0 and use_wandb:
             wandb_epoch = wandb.init(
                 config=_config,
                 project=_config["project"],
@@ -270,17 +316,19 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
                 job_type=_config["job_type"],
                 reinit=True,
             )
-        wandb_epoch.log(
-            {
-                "train loss": trainLoss[epoch],
-                "train acc loss": trainAccLoss[epoch],
-                "train mae loss": trainMaeLoss[epoch],
-                "train rmse loss": trainRmseLoss[epoch],
-                "learning rate": lr,
-                "train time cost": t2 - t1,
-            },
-            step=epoch,
-        )
+        if use_wandb:
+            wandb_epoch.log(
+                {
+                    "train loss": trainLoss[epoch],
+                    "train acc loss": trainAccLoss[epoch],
+                    "train mae loss": trainMaeLoss[epoch],
+                    "train rmse loss": trainRmseLoss[epoch],
+                    "train moe loss": trainMoeLoss[epoch],
+                    "learning rate": lr,
+                    "train time cost": t2 - t1,
+                },
+                step=epoch,
+            )
         if is_scheduler:
             scheduler.step()
             if oneStep and opts and epoch < _config["thread_epoch"]:
@@ -290,7 +338,7 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
         logger.info(f"Validation:")
         with torch.no_grad():
             model.eval()
-            accLoss, maeLoss, rmseLoss = 0, 0, 0
+            accLoss, maeLoss, rmseLoss, moeloss, expert_count = 0, 0, 0, 0, np.zeros(num_of_experts)
 
             countQuestionType = {str(i): 0 for i in range(1, classes + 1)}
             rightAnswerByQuestionType = {str(i): 0 for i in range(1, classes + 1)}
@@ -302,18 +350,28 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
                     mininterval=1,
             ):
                 question, answer, image, type_str, mask, image_original = data
-                pred, pred_mask = model(
+                if _config['earthVQA'] or _config['sga']:
+                    mask = mask[:, -1, :, :].unsqueeze(1)
+                pred, pred_mask, prob, moe_loss = model(
                     image.to(device), question.to(device), mask.to(device)
                 )
                 answer = answer.to(device)
                 mae = F.l1_loss(mask.to(device), pred_mask)
                 mse = F.mse_loss(mask.to(device), pred_mask)
                 rmse = torch.sqrt(mse)
+
+                if prob is not None:
+                    indices = torch.argmax(prob, dim=-1).cpu()
+                    counts = torch.bincount(indices, minlength=num_of_experts)
+                    expert_stats = counts.numpy()
+                    expert_count = expert_count + expert_stats
+
                 # The ground truth of mask has not been normalized. (Which is intuitively weird)
                 # This may be modified in future versions, but currently this method works better than directly normalizing the mask
                 if not _config['normalize']:
-                    mae = mae / 255
                     rmse = rmse / 255
+                if use_moe:
+                    moeLoss += moe_loss.cpu().item() * image.shape[0]
                 acc_loss = criterion(pred, answer)
                 accLoss += acc_loss.cpu().item() * image.shape[0]
                 maeLoss += mae.cpu().item() * image.shape[0]
@@ -329,6 +387,7 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
             valAccLoss.append(accLoss / len(val_dataset))
             valMaeLoss.append(maeLoss / len(val_dataset))
             valRmseLoss.append(rmseLoss / len(val_dataset))
+            valMoeLoss.append(moeLoss / len(val_dataset))
             valLoss.append(valAccLoss[epoch] + valRmseLoss[epoch] + valMaeLoss[epoch])
             if valLoss[epoch] < bestVal:
                 bestVal = valLoss[epoch]
@@ -336,7 +395,8 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
                 torch.save(model.state_dict(), f"{saveDir}bestValLoss.pth")
             logger.info(
                 f"Epoch {epoch} , val loss: {valLoss[epoch]:.5f}, acc loss : {valAccLoss[epoch]:.5f}, "
-                f"mae loss: {valMaeLoss[epoch]:.5f}, rmae loss: {valRmseLoss[epoch]:.5f}"
+                f"mae loss: {valMaeLoss[epoch]:.5f}, rmae loss: {valRmseLoss[epoch]:.5f}, "
+                f"Expert count: {expert_count}, MoE loss : {valMoeLoss[epoch]:.5f}"
             )
 
             numQuestions = 0
@@ -373,28 +433,29 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
                 torch.save(model.state_dict(), f"{saveDir}bestValAcc.pth")
             AA = 0
             for key in subclassAcc.keys():
-                wandb_epoch.log(
-                    {"val " + key + " acc": subclassAcc[key][1]}, step=epoch
-                )
+                if use_wandb:
+                    wandb_epoch.log(
+                        {"val " + key + " acc": subclassAcc[key][1]}, step=epoch
+                    )
                 AA += subclassAcc[key][1]
-            if _config['balance']:
-                AA = AA / (len(subclassAcc) - 2)
-            else:
-                AA = AA / len(subclassAcc)
+            AA = AA / len(subclassAcc)
+
             v2 = time.time()
             logger.info(f"overall acc: {acc[epoch]:.5f}\taverage acc: {AA:.5f}")
-            wandb_epoch.log(
-                {
-                    "val overall acc": acc[epoch],
-                    "val average acc": AA,
-                    "val loss": valLoss[epoch],
-                    "val acc loss": valAccLoss[epoch],
-                    "val mae loss": valMaeLoss[epoch],
-                    "val rmse loss": valRmseLoss[epoch],
-                    "validation time cost": v2 - v1,
-                },
-                step=epoch,
-            )
+            if use_wandb:
+                wandb_epoch.log(
+                    {
+                        "val overall acc": acc[epoch],
+                        "val average acc": AA,
+                        "val loss": valLoss[epoch],
+                        "val acc loss": valAccLoss[epoch],
+                        "val mae loss": valMaeLoss[epoch],
+                        "val rmse loss": valRmseLoss[epoch],
+                        "val moe loss": valMoeLoss[epoch],
+                        "validation time cost": v2 - v1,
+                    },
+                    step=epoch,
+                )
         torch.save(model.state_dict(), f"{saveDir}lastValModel.pth")
     test_model(
         _config,
@@ -406,7 +467,6 @@ def train(_config, train_dataset, val_dataset, test_dataset, device):
         wandb_epoch,
         num_epochs,
     )
-    wandb_epoch.finish()
     end = time.time()
     logger.info(f"time used: {end - start} s")
 

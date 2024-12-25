@@ -1,4 +1,4 @@
-from transformers import BertTokenizerFast, CLIPProcessor, AutoProcessor
+from transformers import BertTokenizerFast, CLIPProcessor, AutoProcessor, Blip2Processor
 import json
 
 
@@ -9,6 +9,7 @@ def _get_token(tokenIn):
 
 class SeqEncoder:
     def __init__(self, _config, JSONFile, textTokenizer=None):
+        self.config=_config
         self.MAX_ANSWERS = _config["MAX_ANSWERS"]
         self.LEN_QUESTION = _config["LEN_QUESTION"]
         self.encoder_type = "answer"
@@ -17,10 +18,12 @@ class SeqEncoder:
         self.clipList = _config["clipList"]
         if self.tokenizerName in self.clipList:
             self.tokenizer = CLIPProcessor.from_pretrained(self.textModel)
-        elif self.tokenizerName in ["siglip-512"]:
+        elif self.tokenizerName in ["siglip_512"]:
             self.tokenizer = AutoProcessor.from_pretrained(self.textModel)
         elif self.tokenizerName in ["bert_base_uncased"]:
             self.tokenizer = BertTokenizerFast.from_pretrained(self.textModel)
+        if _config['BLIP']:
+            self.tokenizer = Blip2Processor.from_pretrained("./models/imageModels/blip2")
         Q_words = {}
 
         with open(JSONFile) as json_data:
@@ -47,18 +50,23 @@ class SeqEncoder:
             self.question_words = {"<EOS>": 0}
             self.question_list_words = ["<EOS>"]
             for i, (word, _) in enumerate(sorted_words):
-                self.question_words[word] = i
+                self.question_words[word] = i + 1
                 self.question_list_words.append(word)
-        elif self.tokenizerName in ["siglip-512"]:
+        elif self.tokenizerName in ["siglip_512"]:
             for i, (word, _) in enumerate(sorted_words):
                 self.question_words[word] = self.tokenizer(
                     text=word, return_tensors="np"
                 )["input_ids"][0][0]
                 self.question_list_words.append(word)
-        else:  # clip
+        elif _config['BLIP']:
+            for i, (word, _) in enumerate(sorted_words):
+                self.question_words[word] = self.tokenizer(text=word, return_tensors="np")["input_ids"][0][-1]
+                self.question_list_words.append(word)
+        else:  # clip, blip
             for i, (word, _) in enumerate(sorted_words):
                 self.question_words[word] = self.tokenizer(text=word)["input_ids"][1]
                 self.question_list_words.append(word)
+        pass
 
     def encode(self, sentence, question=True):
         if sentence[-1] == "?" or sentence[-1] == ".":
@@ -72,8 +80,12 @@ class SeqEncoder:
                     text=sentence, padding="max_length", max_length=self.LEN_QUESTION
                 )
                 return res
-
-        elif self.tokenizerName in ["siglip-512"]:
+        elif self.config['BLIP']:
+            if question:
+                res = self.tokenizer(
+                    text=sentence, padding='max_length', max_length=self.LEN_QUESTION, return_tensors="np")
+                return res
+        elif self.tokenizerName in ["siglip_512"]:
             if question:
                 res = self.tokenizer(
                     text=sentence,
@@ -87,9 +99,12 @@ class SeqEncoder:
             res = []
             if sentence[-1] == "?" or sentence[-1] == ".":
                 sentence = sentence[:-1]
+            tokens = sentence.split()
+            for token in tokens:
+                token = _get_token(token)
+                res.append(self.question_words[token])
 
             if question:
-                tokens = sentence.split()
                 res.append(self.question_words["<EOS>"])
                 while len(res) < self.LEN_QUESTION:
                     res.append(self.question_words["<EOS>"])
