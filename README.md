@@ -56,7 +56,7 @@ python main.py
 
 ### Data Examples
 
-![](https://meee.com.tw/gxerqE2)
+![](https://i.meee.com.tw/gxerqE2.png)
 
 ### Citation
 
