@@ -33,8 +33,6 @@ def test_model(_config, model, test_loader, test_length, device, logger, wandb_e
                 mininterval=1,
         ):
             question, answer, image, type_str, mask, image_original = data
-            if _config['earthVQA'] or _config['sga']:
-                mask = mask[:, -1, :, :].unsqueeze(1)
             pred, pred_mask, prob, moe_loss = model(
                 image.to(device), question.to(device), mask.to(device)
             )
@@ -52,6 +50,7 @@ def test_model(_config, model, test_loader, test_length, device, logger, wandb_e
             # The ground truth of mask has not been normalized. (Which is intuitively weird)
             # This may be modified in future versions, but currently this method works better than directly normalizing the mask
             if not _config['normalize']:
+                mae = mae/255
                 rmse = rmse / 255
 
             acc_loss = criterion(pred, answer)
@@ -184,7 +183,7 @@ def main(_config):
         transform=data_transforms,
     )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    weightsName = "lastValModel.pth"
+    weightsName = f"{saveDir}lastValModel.pth"
     model = CDModel(
         _config,
         seq_Encoder.getVocab(),

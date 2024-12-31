@@ -1,6 +1,4 @@
 import matplotlib
-import matplotlib.pyplot as plt
-import torchvision.transforms as T
 import numpy as np
 import torch
 import random

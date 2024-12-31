@@ -30,7 +30,6 @@ class CDModel(nn.Module):
         self.num_classes = config["answer_number"]
         self.clipList = config["clipList"]
         self.vitList = config["vitList"]
-        self.learnable_mask = config["learnable_mask"]
         self.oneStep = config["one_step"]
         self.layer_outputs = {}
         self.attConfig = self.config["attnConfig"]
@@ -39,8 +38,6 @@ class CDModel(nn.Module):
         from models import RouterGate
         if self.MoE:
             self.router = RouterGate(config)
-        if self.learnable_mask:
-            self.weights = nn.Parameter(torch.randn(3, input_size, input_size) + 1)
         if self.maskHead:
             if not self.oneStep:
                 self.maskNet = torch.load(f"{saveDir}maskModel.pth")

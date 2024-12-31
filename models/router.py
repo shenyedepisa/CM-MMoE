@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torchvision.models import resnet18
 from torchvision import models
-from .modules import CrossAttention, MLP
+from .modules import CrossAttention
 from torch import softmax
 
 
@@ -33,8 +33,8 @@ class MoE(nn.Module):
             self.attConfig["attn_dropout"],
         )
         self.gate = nn.Linear(emb_size, experts)
-        self.noise = nn.Linear(emb_size, experts)  # 给gate输出概率加噪音用
-        self.w_importance = w_importance  # expert均衡用途(for loss)
+        self.noise = nn.Linear(emb_size, experts)  # add noise to gate
+        self.w_importance = w_importance  # expert balance(for loss)
 
     def forward(self, x, q):  # x: (batch,seq_len,emb)
         x_shape = x.shape
@@ -46,8 +46,8 @@ class MoE(nn.Module):
         gate_logits = self.gate(att)  # (batch*seq_len,experts)
         gate_prob = softmax(gate_logits, dim=-1)  # (batch*seq_len,experts)
 
-        # 2024-05-05 Noisy Top-K Gating，优化expert倾斜问题
-        if self.training:  # 仅训练时添加噪音
+        # 2024-05-05 Noisy Top-K Gating
+        if self.training:
             noise = torch.randn_like(gate_prob) * nn.functional.softplus(
                 self.noise(x))  # https://arxiv.org/pdf/1701.06538 , StandardNormal()*Softplus((x*W_noise))
             gate_prob = gate_prob + noise
@@ -68,28 +68,27 @@ class MoE(nn.Module):
             x_expert = x[top_index == expert_i]  # (...,emb)
             y_expert = expert_model(x_expert)  # (...,emb)
 
-            add_index = (top_index == expert_i).nonzero().flatten()  # 要修改的下标
+            add_index = (top_index == expert_i).nonzero().flatten()
             y = y.index_add(dim=0, index=add_index,
-                            source=y_expert)  # 等价于y[top_index==expert_i]=y_expert，为了保证计算图正确，保守用index_add算子
+                            source=y_expert)  # y[top_index==expert_i]=y_expert
 
         # weighted sum experts
         top_weights = top_weights.view(-1, 1).expand(-1, x.size(-1))  # (batch*seq_len*top,emb)
         y = y * top_weights
         y = y.view(-1, self.top, x.size(-1))  # (batch*seq_len,top,emb)
-        y = y.sum(dim=1)  # (batch*seq_len,emb) # 多通道特征直接sum了
+        y = y.sum(dim=1)  # (batch*seq_len,emb)
 
-        # 2024-05-05 计算gate输出各expert的累计概率, 做一个loss让各累计概率尽量均衡，避免expert倾斜
+        # experts balance loss
         # https://arxiv.org/pdf/1701.06538 BALANCING EXPERT UTILIZATION
         if self.training:
-            importance = gate_prob.sum(dim=0)  # 将各expert打分各自求和 sum( (batch*seq_len,experts) , dim=0)
-            # 求CV变异系数（也就是让expert们的概率差异变小）, CV=标准差/平均值
+            importance = gate_prob.sum(dim=0)  # sum( (batch*seq_len,experts) , dim=0)
+            # Coefficient of Variation(CV), CV = standard deviation / mean
             importance_loss = self.w_importance * (torch.std(importance) / torch.mean(importance)) ** 2
         else:
-            importance = gate_prob.sum(dim=0)  # 将各expert打分各自求和 sum( (batch*seq_len,experts) , dim=0)
-            # 求CV变异系数（也就是让expert们的概率差异变小）, CV=标准差/平均值
+            importance = gate_prob.sum(dim=0)
             importance_loss = self.w_importance * (torch.std(importance) / torch.mean(importance)) ** 2
             # importance_loss = None
-        return y.view(x_shape), gate_prob, importance_loss  # 2024-05-05 返回gate的输出用于debug其均衡效果, 返回均衡loss
+        return y.view(x_shape), gate_prob, importance_loss
 
 
 class RouterGate(nn.Module):
@@ -109,32 +108,7 @@ class RouterGate(nn.Module):
         num_ftrs = self.cnnEncoder.fc.in_features
         self.cnnEncoder.fc = torch.nn.Linear(num_ftrs, self.output)
         self.cnnEncoder.conv1 = torch.nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
         self.linerImg = nn.Linear(self.attConfig["embed_size"], self.output)
-
-        # self.mlpS = MLP(
-        #     self.attConfig["embed_size"],
-        #     int(self.attConfig["embed_size"] * self.attConfig["mlp_ratio"]),
-        #     self.attConfig["embed_size"],
-        #     self.attConfig["attn_dropout"],
-        # )
-        # self.mlpT = MLP(
-        #     self.attConfig["embed_size"],
-        #     int(self.attConfig["embed_size"] * self.attConfig["mlp_ratio"]),
-        #     self.attConfig["embed_size"],
-        #     self.attConfig["attn_dropout"],
-        # )
-        # self.mlpB = MLP(
-        #     self.attConfig["embed_size"],
-        #     int(self.attConfig["embed_size"] * self.attConfig["mlp_ratio"]),
-        #     self.attConfig["embed_size"],
-        #     self.attConfig["attn_dropout"],
-        # )
-        self.crossAtt = CrossAttention(
-            self.attConfig["embed_size"],
-            self.attConfig["heads"],
-            self.attConfig["attn_dropout"],
-        )
         self.out = nn.Linear(int(self.embed_size * 2), self.embed_size)
 
     def forward(self, source, target, background, image, text):
@@ -146,11 +120,5 @@ class RouterGate(nn.Module):
         visionFeatures = torch.cat((s, t, b, img), dim=1)
 
         moeFeatures, gate_prob, importance_loss = self.moe(visionFeatures, text)
-
-        # att = self.crossAtt(s.unsqueeze(1), t.unsqueeze(1)).squeeze(1)
-        # output = text + self.mlpS(att)
-        # t = s + self.mlpT(att)
-        # output = torch.cat((s, t), dim=1)
-        # output = self.out(output)
 
         return moeFeatures, gate_prob, importance_loss

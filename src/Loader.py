@@ -79,10 +79,7 @@ class Loader(Dataset):
         # mask = np.concatenate((source_mask, target_mask, background_mask), axis=-1).astype(np.uint8)
         # The mask has not been normalized.
         # This may be modified in future versions, but currently this method works better than directly normalizing the mask
-        if self.config['earthVQA'] or self.config['sga']:
-            mask = np.concatenate((source_mask, target_mask, background_mask, seg), axis=-1)
-        else:
-            mask = np.concatenate((source_mask, target_mask, background_mask), axis=-1)
+        mask = np.concatenate((source_mask, target_mask, background_mask), axis=-1)
         sourceImage = T.ToTensor()(img)
         mask = self.transform["mask"](mask).float()
         imgT = self.transform["image"](img.copy())

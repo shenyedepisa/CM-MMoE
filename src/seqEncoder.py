@@ -10,7 +10,6 @@ def _get_token(tokenIn):
 class SeqEncoder:
     def __init__(self, _config, JSONFile, textTokenizer=None):
         self.config=_config
-        self.MAX_ANSWERS = _config["MAX_ANSWERS"]
         self.LEN_QUESTION = _config["LEN_QUESTION"]
         self.encoder_type = "answer"
         self.tokenizerName = textTokenizer
@@ -22,8 +21,6 @@ class SeqEncoder:
             self.tokenizer = AutoProcessor.from_pretrained(self.textModel)
         elif self.tokenizerName in ["bert_base_uncased"]:
             self.tokenizer = BertTokenizerFast.from_pretrained(self.textModel)
-        if _config['BLIP']:
-            self.tokenizer = Blip2Processor.from_pretrained("./models/imageModels/blip2")
         Q_words = {}
 
         with open(JSONFile) as json_data:
@@ -58,11 +55,7 @@ class SeqEncoder:
                     text=word, return_tensors="np"
                 )["input_ids"][0][0]
                 self.question_list_words.append(word)
-        elif _config['BLIP']:
-            for i, (word, _) in enumerate(sorted_words):
-                self.question_words[word] = self.tokenizer(text=word, return_tensors="np")["input_ids"][0][-1]
-                self.question_list_words.append(word)
-        else:  # clip, blip
+        else:  # clip
             for i, (word, _) in enumerate(sorted_words):
                 self.question_words[word] = self.tokenizer(text=word)["input_ids"][1]
                 self.question_list_words.append(word)
@@ -79,11 +72,6 @@ class SeqEncoder:
                 res = self.tokenizer(
                     text=sentence, padding="max_length", max_length=self.LEN_QUESTION
                 )
-                return res
-        elif self.config['BLIP']:
-            if question:
-                res = self.tokenizer(
-                    text=sentence, padding='max_length', max_length=self.LEN_QUESTION, return_tensors="np")
                 return res
         elif self.tokenizerName in ["siglip_512"]:
             if question:

@@ -5,8 +5,8 @@ This is the initial version of the Real-RSCM dataset and CM-MMoE Framework.
 ### Installation
 
 ```
-conda create -n tamper python=3.10
-conda activate tamper
+conda create -n MMoE python=3.11
+conda activate MMoE
 ```
 
 ##### pytorch
@@ -18,7 +18,7 @@ conda activate tamper
 # with conda
 conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
 # with pip
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu118
 ```
 
 ##### Install Packages

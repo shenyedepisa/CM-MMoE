@@ -35,7 +35,6 @@ def train(_config, train_dataset, val_dataset, test_dataset, device, question_vo
     batch_size = _config["batch_size"]
     oneStep = _config["one_step"]
     opts = _config["opts"]
-    img_only = _config['img_only']
     num_epochs = _config["num_epochs"]
     learning_rate = _config["learning_rate"]
     saveDir = _config["saveDir"]
@@ -82,7 +81,7 @@ def train(_config, train_dataset, val_dataset, test_dataset, device, question_vo
     )
 
     optimizer_mask = None
-    if img_only:
+    if oneStep:
         model = CDModel(
             _config,
             question_vocab.getVocab(),
@@ -92,86 +91,63 @@ def train(_config, train_dataset, val_dataset, test_dataset, device, question_vo
             trainText=trainText,
             trainImg=trainImg,
         )
-        optimizer = torch.optim.Adam(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=learning_rate,
-            weight_decay=_config["weight_decay"],
-        )
-        if _config["opt"] == "SGD":
-            optimizer = torch.optim.SGD(
-                filter(lambda p: p.requires_grad, model.parameters()),
+        if opts:
+            maskNet_params = [p for p in model.maskNet.parameters() if p.requires_grad]
+            maskNet_ids = {id(p) for p in model.maskNet.parameters()}
+            other_params = [
+                p
+                for p in model.parameters()
+                if id(p) not in maskNet_ids
+                if p.requires_grad
+            ]
+            optimizer_mask = torch.optim.Adam(maskNet_params, lr=1e-3)
+
+            optimizer = torch.optim.Adam(
+                other_params,
                 lr=learning_rate,
                 weight_decay=_config["weight_decay"],
-                momentum=0.9,
             )
-    else:
-        if oneStep:
-            model = CDModel(
-                _config,
-                question_vocab.getVocab(),
-                input_size=image_size,
-                textHead=textHead,
-                imageHead=imageHead,
-                trainText=trainText,
-                trainImg=trainImg,
-            )
-            if opts:
-                maskNet_params = [p for p in model.maskNet.parameters() if p.requires_grad]
-                maskNet_ids = {id(p) for p in model.maskNet.parameters()}
-                other_params = [
-                    p
-                    for p in model.parameters()
-                    if id(p) not in maskNet_ids
-                    if p.requires_grad
-                ]
-                optimizer_mask = torch.optim.Adam(maskNet_params, lr=1e-3)
-
-                optimizer = torch.optim.Adam(
-                    other_params,
-                    lr=learning_rate,
-                    weight_decay=_config["weight_decay"],
-                )
-            else:
-                optimizer = torch.optim.Adam(
-                    filter(lambda p: p.requires_grad, model.parameters()),
-                    lr=learning_rate,
-                    weight_decay=_config["weight_decay"],
-                )
-                if _config["opt"] == "SGD":
-                    optimizer = torch.optim.SGD(
-                        filter(lambda p: p.requires_grad, model.parameters()),
-                        lr=learning_rate,
-                        weight_decay=_config["weight_decay"],
-                        momentum=0.9,
-                    )
         else:
-            mask_model = maskModel(_config).to(device)
-            train_mask_model(
-                _config,
-                mask_model,
-                train_loader,
-                len(train_dataset),
-                val_loader,
-                len(val_dataset),
-                device,
-                logger,
-            )
-            model = CDModel(
-                _config,
-                question_vocab.getVocab(),
-                input_size=image_size,
-                textHead=textHead,
-                imageHead=imageHead,
-                trainText=trainText,
-                trainImg=trainImg,
-            )
-            for param in model.maskNet.parameters():
-                param.requires_grad = False
             optimizer = torch.optim.Adam(
                 filter(lambda p: p.requires_grad, model.parameters()),
                 lr=learning_rate,
                 weight_decay=_config["weight_decay"],
             )
+            if _config["opt"] == "SGD":
+                optimizer = torch.optim.SGD(
+                    filter(lambda p: p.requires_grad, model.parameters()),
+                    lr=learning_rate,
+                    weight_decay=_config["weight_decay"],
+                    momentum=0.9,
+                )
+    else:
+        mask_model = maskModel(_config).to(device)
+        train_mask_model(
+            _config,
+            mask_model,
+            train_loader,
+            len(train_dataset),
+            val_loader,
+            len(val_dataset),
+            device,
+            logger,
+        )
+        model = CDModel(
+            _config,
+            question_vocab.getVocab(),
+            input_size=image_size,
+            textHead=textHead,
+            imageHead=imageHead,
+            trainText=trainText,
+            trainImg=trainImg,
+        )
+        for param in model.maskNet.parameters():
+            param.requires_grad = False
+        optimizer = torch.optim.Adam(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=learning_rate,
+            weight_decay=_config["weight_decay"],
+        )
 
     scheduler = None
     mask_scheduler = None
@@ -246,6 +222,7 @@ def train(_config, train_dataset, val_dataset, test_dataset, device, question_vo
             # The ground truth of mask has not been normalized. (Which is intuitively weird)
             # This may be modified in future versions, but currently this method works better than directly normalizing the mask
             if not _config['normalize']:
+                mae = mae / 255
                 rmse = rmse / 255
             step_acc = acc_loss.cpu().item()
             step_mae = mae.cpu().item()
@@ -350,8 +327,6 @@ def train(_config, train_dataset, val_dataset, test_dataset, device, question_vo
                     mininterval=1,
             ):
                 question, answer, image, type_str, mask, image_original = data
-                if _config['earthVQA'] or _config['sga']:
-                    mask = mask[:, -1, :, :].unsqueeze(1)
                 pred, pred_mask, prob, moe_loss = model(
                     image.to(device), question.to(device), mask.to(device)
                 )
@@ -369,6 +344,7 @@ def train(_config, train_dataset, val_dataset, test_dataset, device, question_vo
                 # The ground truth of mask has not been normalized. (Which is intuitively weird)
                 # This may be modified in future versions, but currently this method works better than directly normalizing the mask
                 if not _config['normalize']:
+                    mae = mae / 255
                     rmse = rmse / 255
                 if use_moe:
                     moeLoss += moe_loss.cpu().item() * image.shape[0]

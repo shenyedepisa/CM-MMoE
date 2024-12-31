@@ -7,35 +7,22 @@ ex = Experiment("CM-MMoE", save_git_info=False)
 @ex.config
 def config():
     # save
-    use_wandb = False
-    subDir = "MoE_6_4"
+    use_wandb = True
+    subDir = "MoE_6_4_1"
 
     # Wandb Config
     # https://docs.wandb.ai/quickstart/
     wandbName = subDir
-    wandbKey = ""
+    wandbKey = "116c9acc73067dd77655e21532d04392aff2174a"
     project = "CM-MMoE"
     job_type = "train"
 
     MoE = True
-    answer_number = 51
+    answer_number = 50
     question_classes = 14
     # if MoE:
     EXPERTS = 6
     TOP = 4
-
-    sga = False
-    BLIP = False
-    Co_att = False
-    sga1 = False
-    mac = False
-    mcan = False
-    dvqa = False
-    earthVQA = False
-    san = False
-    mqvqa = False
-    rsivqa = False
-    eth = False
 
     normalize = False
     opts = True
@@ -57,20 +44,10 @@ def config():
     FUSION_HIDDEN = 512
     DROPOUT = 0.3
 
-    add_mask = False
-    mask_only = False
-    learnable_mask = False
-    img_only = False
-    if img_only or eth or rsivqa or mqvqa or san or dvqa or mac or mcan or img_only:
-        opts = False
-        one_step = True
-        add_mask = False
-        mask_only = False
-        learnable_mask = False
-
-    resample = False
+    add_mask = True
     pin_memory = True
     persistent_workers = True
+
     num_workers = 4
 
     real_batch_size = 32
@@ -82,6 +59,7 @@ def config():
     CosineAnnealingLR = True
     warmUp = False
     L1Reg = False
+    resample = False
     trainText = True
     trainImg = True
     finetuneMask = True
@@ -111,8 +89,7 @@ def config():
             "questionsJSON": os.path.join(json_path, "Test_Questions.json"),
         },
     }
-    MAX_ANSWERS = 100
-    LEN_QUESTION = 30
+    LEN_QUESTION = 40
     clipList = [
         "clip",
         "rsicd",
@@ -132,19 +109,19 @@ def config():
     if imageHead == "clip_b_32_224":
         imageModelPath = "models/clipModels/openai_clip_b_32"
         VISUAL_OUT = 768
-        imageSize = 224
+        image_resize = 224
     elif imageHead == "siglip_512":
         imageModelPath = "models/clipModels/siglip_512"
-        imageSize = 512
+        image_resize = 512
     else:
-        imageSize = 256
+        image_resize = 256
     textHead = "clip_b_32_224"
     if textHead == "clip_b_32_224":
         textModelPath = "models/clipModels/openai_clip_b_32"
         QUESTION_OUT = 512
     elif textHead == "siglip_512":
         textModelPath = "models/clipModels/siglip_512"
-        imageSize = 512
+        QUESTION_OUT = 768
     elif textHead == "skipthoughts":
         textModelPath = "models/textModels/skip-thoughts"
         QUESTION_OUT = 2400
@@ -156,21 +133,3 @@ def config():
         "mlp_output": 768,
         "attn_dropout": 0.1,
     }
-
-    MAC_cfg = {
-        "TFLAG": True,
-        "LEARNING_RATE": 0.0001,
-        "BATCH_SIZE": 64,
-        "MAX_EPOCHS": 25,
-        "SNAPSHOT_INTERVAL": 5,
-        "WEIGHT_INIT": "xavier_uniform",
-        "CLIP_GRADS": True,
-        "CLIP": 8,
-        "MAX_STEPS": 4,
-        "EALRY_STOPPING": True,
-        "PATIENCE": 5,
-        "VAR_DROPOUT": False,
-        "DATA_DIR": '',
-        "NUM_ANS": answer_number,
-    }
-
