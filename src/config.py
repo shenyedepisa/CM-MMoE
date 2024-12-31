@@ -8,12 +8,12 @@ ex = Experiment("CM-MMoE", save_git_info=False)
 def config():
     # save
     use_wandb = True
-    subDir = "MoE_6_4_1"
+    subDir = "CM_MMoE_1"
 
     # Wandb Config
     # https://docs.wandb.ai/quickstart/
     wandbName = subDir
-    wandbKey = "116c9acc73067dd77655e21532d04392aff2174a"
+    wandbKey = ""
     project = "CM-MMoE"
     job_type = "train"
 
@@ -34,7 +34,6 @@ def config():
 
     saveDir = "./outputs/"
     saveDir = os.path.join(saveDir, subDir + '/')
-    # new_data_path = "datasets/CM_dataset/"
     new_data_path = './datasets/CM_dataset/'
     source_image_size = 512
 
