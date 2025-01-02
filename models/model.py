@@ -83,22 +83,22 @@ class CDModel(nn.Module):
         v = self.imgModel(pixel_values=input_v)["pooler_output"]
         v = self.dropout(v)
         v = self.lineV(v)
-        v = nn.Tanh()(v)
+        v = nn.SiLU()(v)
         if self.textHead == "siglip_512":
             q = self.textModel(input_ids=input_q["input_ids"])["pooler_output"]
         elif self.textHead in self.clipList:
             q = self.textModel(**input_q)["pooler_output"]
             q = self.dropout(q)
             q = self.lineQ(q)
-            q = nn.Tanh()(q)
+            q = nn.SiLU()(q)
         else:
             q = self.textModel(input_q)
         moe, gate_prob, importance_loss = self.router(m0, m1, m2, v, q)
         x = torch.mul(moe, q)
-        x = nn.Tanh()(x)
+        x = nn.SiLU()(x)
         x = self.dropout(x)
         x = self.linear_classify1(x)
-        x = nn.Tanh()(x)
+        x = nn.SiLU()(x)
         x = self.dropout(x)
         x = self.linear_classify2(x)
 

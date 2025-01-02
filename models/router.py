@@ -12,7 +12,7 @@ class Expert(nn.Module):
 
         self.seq = nn.Sequential(
             nn.Linear(emb_size, emb_size),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(emb_size, emb_size),
         )
 
@@ -116,7 +116,7 @@ class RouterGate(nn.Module):
         t = self.cnnEncoder(target)
         b = self.cnnEncoder(background)
         img = self.linerImg(image)
-        img = nn.functional.relu(img)
+        img = nn.SiLU()(img)
         visionFeatures = torch.cat((s, t, b, img), dim=1)
 
         moeFeatures, gate_prob, importance_loss = self.moe(visionFeatures, text)
