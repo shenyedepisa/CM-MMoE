@@ -50,8 +50,8 @@ def test_model(_config, model, test_loader, test_length, device, logger, wandb_e
             # The ground truth of mask has not been normalized. (Which is intuitively weird)
             # This may be modified in future versions, but currently this method works better than directly normalizing the mask
             if not _config['normalize']:
-                mae = mae.cpu() / 255
-                rmse = rmse.cpu() / 255
+                mae = mae / 255
+                rmse = rmse / 255
 
             acc_loss = criterion(pred, answer)
 

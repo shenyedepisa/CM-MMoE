@@ -222,8 +222,8 @@ def train(_config, train_dataset, val_dataset, test_dataset, device, question_vo
             # The ground truth of mask has not been normalized. (Which is intuitively weird)
             # This may be modified in future versions, but currently this method works better than directly normalizing the mask
             if not _config['normalize']:
-                mae = mae.cpu() / 255
-                rmse = rmse.cpu() / 255
+                mae = mae / 255
+                rmse = rmse / 255
             step_acc = acc_loss.cpu().item()
             step_mae = mae.cpu().item()
             step_rmse = rmse.cpu().item()
@@ -344,8 +344,8 @@ def train(_config, train_dataset, val_dataset, test_dataset, device, question_vo
                 # The ground truth of mask has not been normalized. (Which is intuitively weird)
                 # This may be modified in future versions, but currently this method works better than directly normalizing the mask
                 if not _config['normalize']:
-                    mae = mae.cpu() / 255
-                    rmse = rmse.cpu() / 255
+                    mae = mae / 255
+                    rmse = rmse / 255
                 if use_moe:
                     moeLoss += moe_loss.cpu().item() * image.shape[0]
                 acc_loss = criterion(pred, answer)
