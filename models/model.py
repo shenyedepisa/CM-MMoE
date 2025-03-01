@@ -77,9 +77,9 @@ class CDModel(nn.Module):
 
     def forward(self, input_v, input_q, mask=None, epoch=0):
         predict_mask = self.maskNet(input_v)
-        m0 = predict_mask[:, 0, :, :].unsqueeze(1)  # source
-        m1 = predict_mask[:, 1, :, :].unsqueeze(1)  # target
-        m2 = predict_mask[:, 2, :, :].unsqueeze(1)  # background
+        m0 = predict_mask[:, 0, :, :].unsqueeze(1) / 255  # source
+        m1 = predict_mask[:, 1, :, :].unsqueeze(1) / 255  # target
+        m2 = predict_mask[:, 2, :, :].unsqueeze(1) / 255  # background
         v = self.imgModel(pixel_values=input_v)["pooler_output"]
         v = self.dropout(v)
         v = self.lineV(v)
