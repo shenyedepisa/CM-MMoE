@@ -1,6 +1,10 @@
 # Challenging Dataset and Multi-modal Gated Mixture of Experts Model for Remote Sensing Copy-Move Forgery Understanding
 
+
+
 This is the initial version of the Real-RSCM dataset and CM-MMoE Framework. 
+
+Accepted by ICME 2025.
 
 [Full project about RSCMQA](https://github.com/shenyedepisa/RSCMQA).
 
